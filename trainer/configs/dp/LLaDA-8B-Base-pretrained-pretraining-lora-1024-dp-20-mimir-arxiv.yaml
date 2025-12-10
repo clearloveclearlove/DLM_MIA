@@ -1,0 +1,59 @@
+run_name: LLaDA-8B-Base-pretrained-pretraining-lora-1024-dp-20-mimir-arxiv
+train_mode: pretraining
+wandb_project: Diff_LLM
+wandb_group: SAMA
+
+dataset:
+  train:
+    type: local
+    path: [TYPE_YOUR_PATH_HERE]/train.json
+  # val not provided -> We'll use test for val
+  test:
+    type: local
+    path: [TYPE_YOUR_PATH_HERE]/test.json
+
+tokenizer:
+  identifier: GSAI-ML/LLaDA-8B-Base
+  max_length: 512
+
+model:
+  identifier: GSAI-ML/LLaDA-8B-Base
+  load_pretrained: true
+
+lora:
+  enabled: true # Set to true to enable LoRA
+  r: 1024
+  lora_alpha: 2048
+  lora_dropout: 0.05
+  target_modules: ["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+  bias: "none" # "none", "all", or "lora_only"
+  task_type: "CAUSAL_LM" # e.g., CAUSAL_LM, SEQ_2_SEQ_LM, TOKEN_CLS
+  save_merged_model_at_end: true
+
+privacy:
+  enabled: true
+  noise_multiplier: 1.0
+  target_delta: 1.0e-5
+  max_grad_norm: 1.0
+  eps_error: 0.1
+  target_epsilon: 20
+  max_compositions: 10000
+
+training:
+  output_dir: ./LLaDA-8B-Base-pretrained-pretraining-lora-1024-dp-20-mimir-arxiv-1_48_1.0e-5_10
+  # deepspeed_config: configs/ds_config.json
+  batch_size: 3
+  gradient_accumulation_steps: 48
+  learning_rate: 1.0e-5
+  weight_decay: 0.1
+  warmup_steps: 500
+  num_train_epochs: 10         # For epoch-based training
+  max_steps: -1                # Must be -1 to fully rely on epochs
+  eval_strategy: epoch
+  save_strategy: epoch
+  logging_strategy: epoch
+  save_total_limit: -1
+  bf16: false
+  fp16: false
+  #early_stopping_patience: 3
+  #early_stopping_threshold: 0.001

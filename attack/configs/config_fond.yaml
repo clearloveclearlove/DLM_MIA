@@ -1,0 +1,34 @@
+global:
+  load_from_base_dir: true
+  target_model: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-arxiv-1_48_1.0e-5_15-real-20poch"
+  tokenizer: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-arxiv-1_48_1.0e-5_15-real-20poch"
+  # target_model: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-lora-512-mimir-arxiv-DSS-1_48_1.0e-5_10-real-10poch/merged_model"
+  # tokenizer: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-lora-512-mimir-arxiv-DSS-1_48_1.0e-5_10-real-10poch/merged_model"
+
+  datasets:
+    - json_train_path: "/home1/yibiao/code/DLM-MIA/data/train/arxiv.json"
+      json_test_path: "/home1/yibiao/code/DLM-MIA/data/test/arxiv.json"
+  batch_size: 4
+  seed: 42
+  device: "cuda"  # This will use all available GPUs
+  fpr_thresholds:
+    - 0.1
+    - 0.01
+    - 0.001
+  n_bootstrap_samples: 10
+  test_samples: null  # Adjust this number as needed
+  max_length: 512
+
+DLMConvergenceAttack:
+  module: "test"
+  steps: 4
+  mask_tail_fraction: 0.5
+  per_step_unmask_frac: null      # None=按K步均匀替换；也可设为0.2等固定比例
+  choose_strategy: "confidence"   # 或 "uniform"
+  save_metadata: true
+  max_length: 512
+  metadata_dir": "out/fond"
+  # 如果你已经知道 mask_id / shift 行为可直接提供；否则自动探测
+  # "model_mask_id": tokenizer.mask_token_id,
+  # "model_shift_logits": False,
+  name: "dlm_conv_var"

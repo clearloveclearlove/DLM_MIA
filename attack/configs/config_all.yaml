@@ -1,0 +1,92 @@
+global:
+  load_from_base_dir: true
+  target_model: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-lora-1024-mimir-arxiv-1_48_1.0e-5_10"
+  tokenizer: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-lora-1024-mimir-arxiv-1_48_1.0e-5_10"
+  # target_model: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-lora-512-mimir-arxiv-DSS-1_48_1.0e-5_10/merged_model"
+  # tokenizer:    "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-lora-512-mimir-arxiv-DSS-1_48_1.0e-5_10/merged_model"
+  datasets:
+    - json_train_path: "/home1/yibiao/code/DLM-MIA/data/train/arxiv.json"
+      json_test_path: "/home1/yibiao/code/DLM-MIA/data/test/arxiv.json"
+  batch_size: 8
+  seed: 42
+  device: "cuda"  # This will use all available GPUs
+  fpr_thresholds:
+    - 0.1
+    - 0.01
+    - 0.001
+  n_bootstrap_samples: 10
+  test_samples: null  # Adjust this number as needed
+  max_length: 512
+
+Sama:
+  module: "sama"
+  steps: 16
+  subset_size: 10          # l for each local subset vote
+  num_subsets: 128        # number of subsets per step
+  l_schedule: "linear"    # or "geometric"
+  min_mask_frac: 0.05     # ~5% of valid tokens masked at early steps
+  max_mask_frac: 0.50     # up to ~50% by the last step
+  batch_size: 8
+  max_length: 512
+  reference_model_path: "/home1/yibiao/PTM/GSAI-ML-LLaDA-8B-Base"
+  reference_device: "cuda"
+  seed: 42
+  save_metadata: true
+  metadata_dir: "out/sama-v1"
+
+# customloss:
+#  module: customloss
+#  mc_num: 4
+
+# loss-calibration:
+#   module: "ratio"
+#   reference_model_path: "/home1/yibiao/PTM/GSAI-ML-LLaDA-8B-Base"
+#   reference_device: "cuda"
+
+zlib:
+ module: zlib
+
+lowercase:
+ module: lowercase
+
+# neighborhood:
+#  module: neighborhood
+#  mlm_model: roberta-base
+#  n_neighbors: 20
+#  top_k: 10
+#  is_scale_embeds: true
+
+mink:
+ module: mink
+ k: 20
+
+minkplusplus:
+ module: minkplusplus
+ k: 20
+
+bag_of_words:
+ module: bag_of_words
+ test_size: 0.2
+ min_df: 0.05
+ n_estimators: 100
+ max_depth: 2
+ min_samples_leaf: 5
+ seed: 42
+
+# recall:
+#  module: recall
+#  extra_non_member_dataset: "imperial-cpg/copyright-traps-extra-non-members"
+#  split: "seq_len_100"
+#  batch_size: 2
+#  n_shots: 7
+#  match_perplexity: false
+#  fixed_prefix: true
+
+# conrecall:
+#  module: conrecall
+#  extra_non_member_dataset: "imperial-cpg/copyright-traps-extra-non-members"
+#  split: "seq_len_100"
+#  batch_size: 2
+#  n_shots: 7
+#  match_perplexity: false
+
