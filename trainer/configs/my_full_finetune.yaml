@@ -1,0 +1,110 @@
+# ============================================================================
+# 全量微调配置文件 (Full Fine-tuning Configuration)
+# 默认单卡训练，支持自动多卡（使用 torchrun 启动）
+# ============================================================================
+
+run_name: LLaDA-8B-Full-Finetune-Arxiv
+train_mode: pretraining  # 训练模式:  "pretraining" 或 "sft"
+wandb_project:  Diff_LLM
+wandb_group: FullFinetune
+
+# ----------------------------------------------------------------------------
+# 数据集配置
+# ----------------------------------------------------------------------------
+dataset:
+  train:
+    type: local
+    path: /home1/yibiao/code/DLM-MIA/mimir-data/train/arxiv.json  # ⚠️ 请修改为你的训练集路径
+  test:
+    type: local
+    path: /home1/yibiao/code/DLM-MIA/mimir-data/test/arxiv.json   # ⚠️ 请修改为你的测试集路径
+
+# ----------------------------------------------------------------------------
+# Tokenizer 配置
+# ----------------------------------------------------------------------------
+tokenizer:
+  identifier: /home1/yibiao/PTM/GSAI-ML-LLaDA-8B-Base  # ⚠️ 请修改为你的模型路径
+  max_length: 512
+
+# ----------------------------------------------------------------------------
+# 模型配置
+# ----------------------------------------------------------------------------
+model:
+  identifier: /home1/yibiao/PTM/GSAI-ML-LLaDA-8B-Base  # ⚠️ 请修改为你的模型路径
+  load_pretrained: true  # ✅ 加载预训练权重
+
+# ❌ 不配置 lora 部分 = 全量微调（所有参数都会更新）
+# 如果需要 LoRA 微调，取消下面的注释并设置 enabled: true
+# lora:
+#   enabled: false
+#   r: 8
+#   lora_alpha: 16
+#   lora_dropout:  0.05
+#   target_modules: ["q_proj", "v_proj", "k_proj", "o_proj"]
+#   bias: "none"
+#   task_type: "CAUSAL_LM"
+
+# ----------------------------------------------------------------------------
+# 训练配置
+# ----------------------------------------------------------------------------
+training:
+  # === 输出路径 ===
+  output_dir: ./LLaDA-8B-Base-pretrained-pretraining-512-mimir-arxiv_32_5.0e-5_15-5epoch  # 模型保存路径
+
+  # === DeepSpeed 配置（可选）===
+  # 单卡训练时可以注释掉，多卡或显存不足时启用
+  # deepspeed_config:  /path/to/ds_config.json
+
+  # === 批量大小 ===
+  batch_size: 4                        # 每张卡的 batch size
+  per_device_train_batch_size: 4       # 显式设置（可选，会覆盖 batch_size）
+  gradient_accumulation_steps: 1       # 梯度累积步数
+  # 有效 batch size = 4 * 8 = 32 (单卡)
+
+  # === 学习率与优化器 ===
+  learning_rate: 5.0e-5                # 学习率
+  weight_decay: 0.1                    # 权重衰减
+  warmup_steps: 500                    # 预热步数
+  optim: "adamw_torch"                 # 优化器:  adamw_torch, adamw_hf, adafactor
+
+  # === 训练轮数 ===
+  num_train_epochs: 5                 # 训练轮数
+  max_steps: -1                        # -1 表示使用 num_train_epochs
+
+  # === 评估与保存策略 ===
+  eval_strategy: epoch                 # 评估策略: epoch, steps, no
+  save_strategy: epoch                 # 保存策略:  epoch, steps, no
+  logging_strategy: epoch              # 日志策略: epoch, steps
+  logging_steps: 50                    # 每 N 步记录一次日志（当 logging_strategy=steps）
+
+  # === 模型保存 ===
+  save_total_limit: 1                 # 保留所有检查点（-1 = 全部保留）
+  load_best_model_at_end: true         # 训练结束后加载最佳模型
+  metric_for_best_model: "eval_loss"   # 最佳模型的评估指标
+  greater_is_better: false             # eval_loss 越小越好
+
+  # === 精度设置 ===
+  bf16: true                           # 使用 BF16 混合精度（推荐用于 A100/H100）
+  fp16: false                          # 使用 FP16 混合精度（推荐用于 V100）
+
+  # === 梯度检查点（可选）===
+  # 用于节省显存，但会稍微降低训练速度
+  # gradient_checkpointing: true
+
+  # === 早停（可选）===
+  # 取消注释以启用早停机制
+  # early_stopping_patience: 3         # 连续 3 个 epoch 无改善则停止
+  # early_stopping_threshold: 0.001    # 最小改善阈值
+
+# ----------------------------------------------------------------------------
+# 差分隐私（可选，默认关闭）
+# ----------------------------------------------------------------------------
+# 取消注释以启用差分隐私训练
+# privacy:
+#   enabled: true
+#   target_epsilon: 1.0
+#   target_delta: 1.0e-5
+#   max_grad_norm: 1.0
+#   noise_multiplier: 1.0
+#   accountant:  "prv"
+#   secure_mode: false

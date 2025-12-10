@@ -34,11 +34,11 @@ class DatasetProcessor:
         
         # Load dataset
         # 缓存了下
-        tmp = "tmp/debug_dataset_2000"
-        if os.path.exists(tmp):
-            logging.info(f"Loading debug dataset from {tmp}")
-            dataset = Dataset.load_from_disk(tmp)
-            return dataset
+        # tmp = "tmp/debug_dataset_2000"
+        # if os.path.exists(tmp):
+        #     logging.info(f"Loading debug dataset from {tmp}")
+        #     dataset = Dataset.load_from_disk(tmp)
+        #     return dataset
         
         dataset = self._load_dataset(ds_info)
         
@@ -55,10 +55,10 @@ class DatasetProcessor:
         
         # Process dataset with NLL computation
         dataset = self._compute_nll(dataset, mask_id, shift_logits)
-        if not os.path.exists(tmp):
-            os.makedirs("tmp", exist_ok=True)
-            dataset.save_to_disk(tmp)
-            logging.info(f"Saved debug dataset to {tmp}")
+        # if not os.path.exists(tmp):
+        #     os.makedirs("tmp", exist_ok=True)
+        #     dataset.save_to_disk(tmp)
+        #     logging.info(f"Saved debug dataset to {tmp}")
         return dataset
 
     def _load_dataset(self, ds_info: Dict[str, Any]) -> Dataset:

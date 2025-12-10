@@ -1,7 +1,7 @@
 global:
   load_from_base_dir: true
-  target_model: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-arxiv-1_48_1.0e-5_15-real-20poch"
-  tokenizer: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-arxiv-1_48_1.0e-5_15-real-20poch"
+  target_model: "/home1/yibiao/code/DLM-MIA/LLaDA-8B-Base-pretrained-pretraining-512-mimir-arxiv_32_5.0e-5_15-5epoch"
+  tokenizer: "/home1/yibiao/code/DLM-MIA/LLaDA-8B-Base-pretrained-pretraining-512-mimir-arxiv_32_5.0e-5_15-5epoch"
   # target_model: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-lora-512-mimir-arxiv-DSS-1_48_1.0e-5_10/merged_model"
   # tokenizer:    "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-lora-512-mimir-arxiv-DSS-1_48_1.0e-5_10/merged_model"
   datasets:

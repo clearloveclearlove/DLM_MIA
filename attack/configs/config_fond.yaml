@@ -1,13 +1,13 @@
 global:
   load_from_base_dir: true
-  target_model: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-arxiv-1_48_1.0e-5_15-real-20poch"
-  tokenizer: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-arxiv-1_48_1.0e-5_15-real-20poch"
+  target_model: "/home1/yibiao/code/DLM-MIA/LLaDA-8B-Base-pretrained-pretraining-512-mimir-arxiv_32_5.0e-5_15-5epoch"
+  tokenizer: "/home1/yibiao/code/DLM-MIA/LLaDA-8B-Base-pretrained-pretraining-512-mimir-arxiv_32_5.0e-5_15-5epoch"
   # target_model: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-lora-512-mimir-arxiv-DSS-1_48_1.0e-5_10-real-10poch/merged_model"
   # tokenizer: "/home1/yibiao/code/DLM-MIA/trainer/LLaDA-8B-Base-pretrained-pretraining-lora-512-mimir-arxiv-DSS-1_48_1.0e-5_10-real-10poch/merged_model"
 
   datasets:
-    - json_train_path: "/home1/yibiao/code/DLM-MIA/data/train/arxiv.json"
-      json_test_path: "/home1/yibiao/code/DLM-MIA/data/test/arxiv.json"
+    - json_train_path: "/home1/yibiao/code/DLM-MIA/mimir-data/train/arxiv.json"
+      json_test_path: "/home1/yibiao/code/DLM-MIA/mimir-data/test/arxiv.json"
   batch_size: 4
   seed: 42
   device: "cuda"  # This will use all available GPUs

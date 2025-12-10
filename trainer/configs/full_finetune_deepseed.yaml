@@ -1,0 +1,82 @@
+# ============================================================================
+# 全量微调配置文件 - DeepSpeed Stage 2
+# ============================================================================
+
+run_name: LLaDA-8B-Full-Finetune-Paper-Config
+train_mode: pretraining
+wandb_project:  Diff_LLM
+wandb_group: FullFinetune
+
+# ----------------------------------------------------------------------------
+# 数据集配置
+# ----------------------------------------------------------------------------
+dataset:
+  train:
+    type: local
+    path: /home1/yibiao/code/DLM-MIA/mimir-data/train/arxiv.json
+  test:
+    type: local
+    path: /home1/yibiao/code/DLM-MIA/mimir-data/test/arxiv.json
+
+# ----------------------------------------------------------------------------
+# Tokenizer 配置
+# ----------------------------------------------------------------------------
+tokenizer:
+  identifier: /home1/yibiao/PTM/GSAI-ML-LLaDA-8B-Base
+  max_length: 512
+
+# ----------------------------------------------------------------------------
+# 模型配置
+# ----------------------------------------------------------------------------
+model:
+  identifier: /home1/yibiao/PTM/GSAI-ML-LLaDA-8B-Base
+  load_pretrained: true
+
+# ----------------------------------------------------------------------------
+# 训练配置
+# ----------------------------------------------------------------------------
+training:
+  # === 输出路径 ===
+  output_dir: ./LLaDA-8B-Full-Finetune-Paper-Config
+
+  # === DeepSpeed Stage 2 配置 ===
+  deepspeed_config:  /home1/yibiao/code/DLM-MIA/trainer/configs/ds_config.json
+
+  # === 批量大小 ===
+  batch_size: 2                        # ✅ 必须有这个字段
+  per_device_train_batch_size: 2       # 每张卡的 batch size
+  gradient_accumulation_steps: 8        # 梯度累积
+  # 总有效 batch size = 2 * 3 * 8 = 48 ✅
+
+  # === 学习率与优化器 ===
+  learning_rate: 5. 0e-5
+  weight_decay: 0.1
+  warmup_steps: 500
+  optim: "adamw_torch"
+
+  # === 训练轮数 ===
+  num_train_epochs: 4
+  max_steps: -1
+
+  # === 评估与保存策略 ===
+  eval_strategy: epoch
+  save_strategy: epoch
+  logging_strategy: steps
+  logging_steps: 50
+
+  # === 模型保存 ===
+  save_total_limit: 1
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  greater_is_better: false
+
+  # === 精度设置 ===
+  bf16: true
+  fp16: false
+
+  # === 梯度检查点 ===
+  gradient_checkpointing: true  # ✅ 节省显存
+
+  # === 早停机制 ===
+  early_stopping_patience: 3
+  early_stopping_threshold: 0.0
