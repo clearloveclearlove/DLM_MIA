@@ -199,7 +199,7 @@ class MIARunner:
 def parse_args():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Run Membership Inference Attacks on Diffusion LLMs.")
-    parser.add_argument('-c', '--config', type=str, default="attack/configs/config_all.yaml",
+    parser.add_argument('-c', '--config', type=str, default="attack/configs/config_all_full.yaml",
                         help="Path to the configuration YAML file.")
     parser.add_argument('--output', type=str,default='out/sama-v1',
                         help="Directory to save results and metadata.")
