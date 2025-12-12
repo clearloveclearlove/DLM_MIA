@@ -184,9 +184,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='attack/configs/config_fond.yaml')
     parser.add_argument('--mask-fracs', type=float, nargs='+',
-                        default=[0.01, 0.05, 0.10, 0.20, 0.50, 0.90])
-    parser.add_argument('--num-samples', type=int, default=100)
-    parser.add_argument('--num-runs', type=int, default=5)
+                        default=[1.0, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.0])
+    parser.add_argument('--num-samples', type=int, default=2000)
+    parser.add_argument('--num-runs', type=int, default=1)
     parser.add_argument('--output', default='./mask_sweep_output')
     args = parser.parse_args()
 

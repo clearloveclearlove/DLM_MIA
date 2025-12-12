@@ -49,7 +49,7 @@ model:
 # ----------------------------------------------------------------------------
 training:
   # === 输出路径 ===
-  output_dir: ./LLaDA-8B-Base-pretrained-pretraining-512-mimir-arxiv_32_5.0e-5_3epoch  # 模型保存路径
+  output_dir: /home1/yibiao/code/DLM-MIA/checkpoints/LLaDA-8B-Base-pretrained-pretraining-512-mimir-arxiv_32_5.0e-5_5epoch  # 模型保存路径
 
   # === DeepSpeed 配置（可选）===
   # 单卡训练时可以注释掉，多卡或显存不足时启用
@@ -59,23 +59,20 @@ training:
   batch_size: 1                        # 每张卡的 batch size
   per_device_train_batch_size: 1       # 显式设置（可选，会覆盖 batch_size）
   gradient_accumulation_steps: 32       # 梯度累积步数
-  # 有效 batch size = 4 * 8 = 32 (单卡)
 
   # === 学习率与优化器 ===
   learning_rate: 5.0e-5                # 学习率
   weight_decay: 0.1                    # 权重衰减
-  warmup_steps: 500                    # 预热步数
   optim: "adamw_torch"                 # 优化器:  adamw_torch, adamw_hf, adafactor
 
   # === 训练轮数 ===
-  num_train_epochs: 3                 # 训练轮数
+  num_train_epochs: 5                 # 训练轮数
   max_steps: -1                        # -1 表示使用 num_train_epochs
 
   # === 评估与保存策略 ===
   eval_strategy: epoch                 # 评估策略: epoch, steps, no
   save_strategy: epoch                 # 保存策略:  epoch, steps, no
   logging_strategy: epoch              # 日志策略: epoch, steps
-  logging_steps: 50                    # 每 N 步记录一次日志（当 logging_strategy=steps）
 
   # === 模型保存 ===
   save_total_limit: 1                 # 保留所有检查点（-1 = 全部保留）
