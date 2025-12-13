@@ -49,7 +49,7 @@ model:
 # ----------------------------------------------------------------------------
 training:
   # === 输出路径 ===
-  output_dir: /home1/yibiao/code/DLM-MIA/checkpoints/LLaDA-8B-Base-pretrained-pretraining-512-mimir-arxiv_32_5.0e-5_5epoch  # 模型保存路径
+  output_dir: /home1/yibiao/code/DLM-MIA/checkpoints/LLaDA-8B-Base-pretrained-pretraining-512-mimir-arxiv_32_5.0e-5_4epoch  # 模型保存路径
 
   # === DeepSpeed 配置（可选）===
   # 单卡训练时可以注释掉，多卡或显存不足时启用
@@ -66,7 +66,7 @@ training:
   optim: "adamw_torch"                 # 优化器:  adamw_torch, adamw_hf, adafactor
 
   # === 训练轮数 ===
-  num_train_epochs: 5                 # 训练轮数
+  num_train_epochs: 4                 # 训练轮数
   max_steps: -1                        # -1 表示使用 num_train_epochs
 
   # === 评估与保存策略 ===
@@ -76,7 +76,7 @@ training:
 
   # === 模型保存 ===
   save_total_limit: 1                 # 保留所有检查点（-1 = 全部保留）
-  load_best_model_at_end: true         # 训练结束后加载最佳模型
+  load_best_model_at_end: false         # 训练结束后加载最佳模型
   metric_for_best_model: "eval_loss"   # 最佳模型的评估指标
   greater_is_better: false             # eval_loss 越小越好
 
