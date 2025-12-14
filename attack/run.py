@@ -88,11 +88,28 @@ class MIARunner:
             ds_name = get_printable_ds_name(ds_info)
             logging.info(f"Processing dataset: {ds_name}")
 
-            # Process dataset
-            dataset = self.dataset_processor.init_dataset(
-                ds_info, self.mask_id, self.shift_logits,
-                self.global_config.get("test_samples")
-            )
+            # 🔥 检查是否跳过 NLL 预处理
+            skip_preprocessing = self.global_config.get("skip_nll_preprocessing", False)
+
+            if skip_preprocessing:
+                # 直接加载原始数据集
+                logging.info("Skipping NLL preprocessing (skip_nll_preprocessing=True)")
+                from attack.misc.dataset import DatasetProcessor
+                dataset = DatasetProcessor(
+                    self.model, self.tokenizer, self.device, self.global_config
+                )._load_dataset(ds_info)
+
+                # 采样
+                test_samples = self.global_config.get("test_samples")
+                if test_samples is not None and 0 < test_samples < len(dataset):
+                    seed = self.global_config.get("seed", 42)
+                    dataset = dataset.shuffle(seed=seed).select(range(test_samples))
+            else:
+                # 正常预处理（计算 nlloss）
+                dataset = self.dataset_processor.init_dataset(
+                    ds_info, self.mask_id, self.shift_logits,
+                    self.global_config.get("test_samples")
+                )
 
             # Run attacks
             attack_results = self._run_attacks_on_dataset(dataset, ds_name)

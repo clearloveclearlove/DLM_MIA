@@ -1,0 +1,43 @@
+global:
+  load_from_base_dir: true
+  target_model: "/home1/yibiao/code/DLM-MIA/checkpoints/LLaDA-8B-Base-pretrained-pretraining-512-mimir-arxiv_32_5.0e-5_4epoch"
+  tokenizer: "/home1/yibiao/code/DLM-MIA/checkpoints/LLaDA-8B-Base-pretrained-pretraining-512-mimir-arxiv_32_5.0e-5_4epoch"
+
+  datasets:
+    - json_train_path: "/home1/yibiao/code/DLM-MIA/mimir-data/train/arxiv.json"
+      json_test_path: "/home1/yibiao/code/DLM-MIA/mimir-data/test/arxiv.json"
+  batch_size: 8
+  seed: 42
+  device: "cuda"  # This will use all available GPUs
+  fpr_thresholds:
+    - 0.1
+    - 0.01
+    - 0.001
+  n_bootstrap_samples: 10
+  test_samples: null  # Adjust this number as needed
+  max_length: 512
+  skip_nll_preprocessing: true
+
+trajectory:
+  module: "trajectory"
+  batch_size: 4
+  max_length: 512
+  num_steps: 11          # Number of progressive denoising steps (100%, 90%, .. ., 0%)
+  num_runs: 1            # Number of sampling runs per step (for variance reduction)
+  use_reference_model: false
+  seed: 42
+  metadata_dir: "trajectory_uncalibrated"
+
+
+# Calibrated Trajectory Attack (with reference model)
+trajectory_calibrated:
+  module: "trajectory"
+  batch_size: 4
+  max_length: 512
+  num_steps: 11
+  num_runs: 1            # More runs for stability
+  use_reference_model:  true
+  reference_model_path: "/home1/yibiao/PTM/GSAI-ML-LLaDA-8B-Base"  # Pre-trained base model
+  reference_device: "cuda"
+  seed: 42
+  metadata_dir: "trajectory_calibrated"
