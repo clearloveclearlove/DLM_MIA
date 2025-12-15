@@ -18,26 +18,53 @@ global:
   max_length: 512
   skip_nll_preprocessing: true
 
-trajectory:
-  module: "trajectory"
-  batch_size: 4
+#trajectory:
+#  module: "trajectory"
+#  batch_size: 4
+#  max_length: 512
+#  num_steps: 11          # Number of progressive denoising steps (100%, 90%, .. ., 0%)
+#  num_runs: 1            # Number of sampling runs per step (for variance reduction)
+#  use_reference_model: false
+#  seed: 42
+#  metadata_dir: "trajectory_uncalibrated"
+#
+#
+## Calibrated Trajectory Attack (with reference model)
+#trajectory_calibrated:
+#  module: "trajectory"
+#  batch_size: 4
+#  max_length: 512
+#  num_steps: 11
+#  num_runs: 1            # More runs for stability
+#  use_reference_model:  true
+#  reference_model_path: "/home1/yibiao/PTM/GSAI-ML-LLaDA-8B-Base"  # Pre-trained base model
+#  reference_device: "cuda"
+#  seed: 42
+#  metadata_dir: "trajectory_calibrated"
+
+
+# Standard Token-Level Trajectory Attack (without reference model)
+token_trajectory:
+  module: "token_trajectory"
+  batch_size: 16
   max_length: 512
-  num_steps: 11          # Number of progressive denoising steps (100%, 90%, .. ., 0%)
-  num_runs: 1            # Number of sampling runs per step (for variance reduction)
+  num_steps: 6          # Number of context unmasking steps (100% -> 0%)
+  num_bins: 3           # Number of token bins for processing
+  aggregation: "bottom_k"  # How to aggregate token AUCs:  mean, median, min, max, top_k, bottom_k
+  aggregation_ratio: 0.01  # Ratio for top_k/bottom_k (1% of tokens)
   use_reference_model: false
   seed: 42
-  metadata_dir: "trajectory_uncalibrated"
 
-
-# Calibrated Trajectory Attack (with reference model)
-trajectory_calibrated:
-  module: "trajectory"
-  batch_size: 4
-  max_length: 512
-  num_steps: 11
-  num_runs: 1            # More runs for stability
-  use_reference_model:  true
-  reference_model_path: "/home1/yibiao/PTM/GSAI-ML-LLaDA-8B-Base"  # Pre-trained base model
-  reference_device: "cuda"
-  seed: 42
-  metadata_dir: "trajectory_calibrated"
+## Calibrated Token-Level Trajectory Attack (with reference model)
+#token_trajectory_calibrated:
+#  module: "token_trajectory"
+#  batch_size: 4
+#  max_length: 512
+#  num_steps: 6
+#  num_bins: 3
+#  aggregation: "bottom_k"
+#  aggregation_ratio:  0.01
+#  use_reference_model: true
+#  reference_model_path: "/home1/yibiao/PTM/GSAI-ML-LLaDA-8B-Base"  # Pre-trained base model
+#  reference_device: "cuda"
+#  seed: 42
