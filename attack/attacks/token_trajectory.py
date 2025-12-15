@@ -1,12 +1,14 @@
 """
-Token-Level Trajectory AUC Attack for Diffusion Language Models
+Token-Level Trajectory AUC Attack for Diffusion Language Models (Fully Vectorized Version)
 
 Analyzes token-level probability trajectories during progressive context unmasking
 to distinguish training members from non-members.
 
 Hypothesis:
-- Members:  Stable token predictions (flat trajectory) → Low AUC
+- Members:    Stable token predictions (flat trajectory) → Low AUC
 - Non-members: Context-dependent predictions (varying trajectory) → High AUC
+
+Key Optimization:  Full vectorization - stack all samples × all steps into single forward pass
 """
 
 import logging
@@ -63,9 +65,10 @@ class TokenTrajectoryAttack(AbstractAttack):
         # Generate context mask schedule
         self.context_mask_ratios = self._generate_mask_schedule()
 
-        logging.info(f"[TokenTrajectoryAttack] Initialized:")
+        logging.info(f"[TokenTrajectoryAttack - Fully Vectorized] Initialized:")
         logging.info(f"  - num_steps: {self.num_steps}")
-        logging.info(f"  - num_bins: {self.num_bins}")
+        logging.info(f"  - num_bins:  {self.num_bins}")
+        logging.info(f"  - batch_size: {self.batch_size}")
         logging.info(f"  - aggregation: {self.aggregation} (ratio={self.aggregation_ratio})")
         logging.info(f"  - use_reference_model: {self.use_reference_model}")
         logging.info(f"  - context_mask_ratios: {[f'{r:.2f}' for r in self.context_mask_ratios]}")
@@ -108,12 +111,12 @@ class TokenTrajectoryAttack(AbstractAttack):
 
         membership_scores = []
 
-        # 🔥 修复：使用真正的批处理
+        # Process in batches
         for start_idx in tqdm(range(0, n_samples, self.batch_size), desc=f"{self.name}"):
             end_idx = min(start_idx + self.batch_size, n_samples)
             batch = dataset[start_idx:end_idx]
 
-            # 现在 _compute_batch_scores 真正利用batch处理
+            # 🔥 Fully vectorized batch processing
             batch_scores = self._compute_batch_scores(batch["text"])
             membership_scores.extend(batch_scores)
 
@@ -130,165 +133,303 @@ class TokenTrajectoryAttack(AbstractAttack):
         """
         Compute token-level trajectory-based scores for a batch of texts.
 
-        🔥 关键修复：现在真正并行处理整个batch
+        🔥 Key Optimization: Aggregate-then-Ratio for numerical stability and semantic clarity
         """
-        # 🔥 对每个文本独立处理（因为token数量和bin划分不同）
-        # 但我们在每个文本内部做批量化优化
-        scores = []
+        if self.use_reference_model:
+            # Compute token-level AUCs for both models
+            target_token_aucs_batch = self._compute_token_aucs_batch(
+                texts, self.model, self.tokenizer, self.target_mask_id,
+                self.target_shift_logits, self.device
+            )
 
-        for text in texts:
-            try:
-                if self.use_reference_model:
-                    # Compute trajectories for both models
-                    target_token_aucs = self._compute_token_aucs_for_text(
-                        text, self.model, self.tokenizer, self.target_mask_id,
-                        self.target_shift_logits, self.device
-                    )
+            ref_token_aucs_batch = self._compute_token_aucs_batch(
+                texts, self.ref_model, self.ref_tokenizer, self.ref_mask_id,
+                self.ref_shift_logits, self.ref_device
+            )
 
-                    ref_token_aucs = self._compute_token_aucs_for_text(
-                        text, self.ref_model, self.ref_tokenizer, self.ref_mask_id,
-                        self.ref_shift_logits, self.ref_device
-                    )
+            # Compute calibrated scores
+            scores = []
+            for target_aucs, ref_aucs in zip(target_token_aucs_batch, ref_token_aucs_batch):
+                if target_aucs is None or ref_aucs is None:
+                    scores.append(0.0)
+                    continue
 
-                    if target_token_aucs is None or ref_token_aucs is None:
-                        scores.append(0.0)
-                        continue
+                # ✅ FIXED: Aggregate first, then compute ratio
+                target_aggregated = self._aggregate_scores(target_aucs)
+                ref_aggregated = self._aggregate_scores(ref_aucs)
 
-                    # Compute relative AUCs
-                    relative_aucs = []
-                    min_len = min(len(target_token_aucs), len(ref_token_aucs))
-                    for i in range(min_len):
-                        relative_auc = target_token_aucs[i] / (ref_token_aucs[i] + 1e-8)
-                        relative_aucs.append(relative_auc)
+                # Numerical stability: prevent division by near-zero
+                ref_aggregated_safe = max(abs(ref_aggregated), 1e-6)
 
-                    # Aggregate relative AUCs
-                    aggregated_score = self._aggregate_scores(relative_aucs)
-                    scores.append(-aggregated_score)
+                # Calibrated score = Target signal / Reference baseline
+                relative_score = target_aggregated / ref_aggregated_safe
 
-                else:
-                    # Single model version
-                    token_aucs = self._compute_token_aucs_for_text(
-                        text, self.model, self.tokenizer, self.target_mask_id,
-                        self.target_shift_logits, self.device
-                    )
+                # Negative because lower trajectory AUC indicates membership
+                scores.append(-relative_score)
 
-                    if token_aucs is None:
-                        scores.append(0.0)
-                        continue
+        else:
+            # Single model version (unchanged)
+            token_aucs_batch = self._compute_token_aucs_batch(
+                texts, self.model, self.tokenizer, self.target_mask_id,
+                self.target_shift_logits, self.device
+            )
 
-                    aggregated_score = self._aggregate_scores(token_aucs)
-                    scores.append(-aggregated_score)
+            scores = []
+            for token_aucs in token_aucs_batch:
+                if token_aucs is None:
+                    scores.append(0.0)
+                    continue
 
-            except Exception as e:
-                logging.warning(f"Error processing text: {e}")
-                scores.append(0.0)
+                aggregated_score = self._aggregate_scores(token_aucs)
+                scores.append(-aggregated_score)
 
         return scores
 
-    def _compute_token_aucs_for_text(self, text, model, tokenizer, mask_id, shift_logits, device):
+    def _compute_token_aucs_batch(self, texts, model, tokenizer, mask_id, shift_logits, device):
         """
-        Compute token-level trajectory AUCs for a single text.
+        Compute token-level trajectory AUCs for a batch of texts using Micro-Batching.
 
-        🔥 核心优化：完全复制 case_study_token_level_auc.py 的逻辑
+        🚀 核心修复:
+        不一次性堆叠所有 Step (避免 Gather OOM)，而是切分成显卡能吃得消的小块 (Micro-Batch)。
         """
-        # Tokenize
-        encoded = tokenizer.encode_plus(
-            text,
-            return_tensors="pt",
-            padding="max_length",
-            truncation=True,
-            max_length=self.max_length
-        ).to(device)
+        # =========================================================================
+        # 🔥 关键参数：微批次大小
+        # 4张卡时，设为 8 表示每张卡处理 2 个样本。
+        # 如果依然 OOM，请将此值改为 4。
+        MICRO_BATCH_SIZE = 8
+        # =========================================================================
 
-        input_ids = encoded["input_ids"][0]
-        attention_mask = encoded["attention_mask"][0].bool()
-        valid_len = int(attention_mask.sum().item())
+        batch_size = len(texts)
 
-        if valid_len < 2:
-            return None
+        # 1. 批量 Tokenize
+        try:
+            encoded = tokenizer.batch_encode_plus(
+                texts,
+                return_tensors="pt",
+                padding="max_length",
+                truncation=True,
+                max_length=self.max_length
+            ).to(device)
+        except Exception as e:
+            logging.warning(f"Tokenization error: {e}")
+            return [None] * batch_size
 
-        # Get all valid token positions (skip special tokens)
-        all_valid_positions = list(range(1, valid_len - 1))
+        input_ids = encoded["input_ids"]
+        attention_mask = encoded["attention_mask"].bool()
+        valid_lengths = attention_mask.sum(dim=1)
 
-        # 🔥 CRITICAL:  Shuffle to preserve local context across bins
-        random.shuffle(all_valid_positions)
-
-        if len(all_valid_positions) == 0:
-            return None
-
-        # Divide into bins
-        num_bins = min(self.num_bins, len(all_valid_positions))
-        bin_size = len(all_valid_positions) // num_bins
-
-        all_token_aucs = []
-
-        # Process each bin
-        for bin_idx in range(num_bins):
-            start_idx = bin_idx * bin_size
-            if bin_idx == num_bins - 1:
-                end_idx = len(all_valid_positions)
-            else:
-                end_idx = (bin_idx + 1) * bin_size
-
-            bin_positions = all_valid_positions[start_idx:end_idx]
-
-            if len(bin_positions) == 0:
+        # 2. 准备 Bin 元数据
+        batch_bin_metadata = []
+        for b in range(batch_size):
+            valid_len = int(valid_lengths[b].item())
+            if valid_len < 2:
+                batch_bin_metadata.append(None)
                 continue
 
-            # Convert to tensor
-            target_indices = torch.tensor(bin_positions, device=device)
-            target_token_ids = input_ids[target_indices]
+            all_valid_positions = list(range(1, valid_len - 1))
+            rng = random.Random(self.seed + b)
+            rng.shuffle(all_valid_positions)
 
-            # Get context positions (all except current bin)
-            context_positions = [p for p in range(valid_len) if p not in bin_positions]
-            context_positions = torch.tensor(context_positions, device=device)
+            if not all_valid_positions:
+                batch_bin_metadata.append(None)
+                continue
 
-            # Shuffle context for progressive unmasking
-            g = torch.Generator(device=device)
-            g.manual_seed(self.seed + bin_idx)
-            context_perm = torch.randperm(len(context_positions), generator=g, device=device)
-            context_positions_shuffled = context_positions[context_perm]
+            num_bins = min(self.num_bins, len(all_valid_positions))
+            bin_size = len(all_valid_positions) // num_bins
 
-            # Compute trajectories for this bin
-            bin_trajectories = [[] for _ in range(len(target_indices))]
+            bins = []
+            for bin_idx in range(num_bins):
+                start_idx = bin_idx * bin_size
+                end_idx = len(all_valid_positions) if bin_idx == num_bins - 1 else (bin_idx + 1) * bin_size
+                bin_positions = all_valid_positions[start_idx:end_idx]
+                if not bin_positions: continue
 
-            # 🔥 关键：对每个context_mask_ratio只做1次前向传播
-            for context_mask_ratio in self.context_mask_ratios:
-                # Determine how many context tokens to mask
-                num_context_to_mask = int(np.round(context_mask_ratio * len(context_positions)))
+                context_positions = [p for p in range(valid_len) if p not in bin_positions]
 
-                masked_ids = input_ids.clone()
-                masked_ids[target_indices] = mask_id  # Always mask target
+                # 在 CPU 上打乱 Context，节省 GPU 显存
+                g = torch.Generator()
+                g.manual_seed(self.seed + bin_idx + b * 100)
+                context_perm = torch.randperm(len(context_positions), generator=g)
+                context_positions_shuffled = torch.tensor(context_positions)[context_perm]
 
-                if num_context_to_mask > 0:
-                    positions_to_mask = context_positions_shuffled[:num_context_to_mask]
-                    masked_ids[positions_to_mask] = mask_id
+                bins.append({
+                    'bin_positions': bin_positions,
+                    'context_positions_shuffled': context_positions_shuffled,
+                    'target_token_ids': input_ids[b, bin_positions].cpu()
+                })
 
-                # 🔥 单次前向传播
-                with torch.no_grad():
-                    outputs = model(
-                        input_ids=masked_ids.unsqueeze(0),
-                        attention_mask=attention_mask.unsqueeze(0) if not shift_logits else None
-                    )
-                    logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
+            batch_bin_metadata.append({'valid_len': valid_len, 'bins': bins})
 
-                    if shift_logits:
-                        logits = torch.cat([logits[:, : 1, :], logits[:, :-1, :]], dim=1)
+        # 3. 🚀 执行 Micro-Batch 推理
+        all_sample_aucs = [[] for _ in range(batch_size)]
 
-                    probs = F.softmax(logits[0], dim=-1)
+        max_bins_in_batch = 0
+        for meta in batch_bin_metadata:
+            if meta: max_bins_in_batch = max(max_bins_in_batch, len(meta['bins']))
 
-                    # 🔥 提取所有target tokens的概率（一次性）
-                    for i, (pos, token_id) in enumerate(zip(target_indices, target_token_ids)):
-                        token_prob = probs[pos, token_id].item()
-                        bin_trajectories[i].append(token_prob)
+        # 外层循环：Bin Index (这样可以保证负载均衡)
+        for bin_idx in range(max_bins_in_batch):
 
-            # Calculate AUC for each token in this bin
-            for traj in bin_trajectories:
-                if len(traj) > 1:
-                    auc = self._calculate_trajectory_auc(np.array(traj))
-                    all_token_aucs.append(auc)
+            # --- 收集阶段：收集当前 Bin Index 下所有的任务 ---
+            # 任务 = (样本ID, 步骤ID, Masked_Input)
+            micro_batch_queue = []
+            task_metadata_queue = []
 
-        return all_token_aucs if all_token_aucs else None
+            for sample_idx in range(batch_size):
+                if batch_bin_metadata[sample_idx] and bin_idx < len(batch_bin_metadata[sample_idx]['bins']):
+                    bin_data = batch_bin_metadata[sample_idx]['bins'][bin_idx]
+
+                    ctx_shuffled = bin_data['context_positions_shuffled']  # CPU
+                    bin_pos = bin_data['bin_positions']
+
+                    # 为每个 Step 生成 Masked Input
+                    for step_idx, ratio in enumerate(self.context_mask_ratios):
+                        masked_ids = input_ids[sample_idx].cpu().clone()
+
+                        # Mask Targets
+                        masked_ids[bin_pos] = mask_id
+                        # Mask Context
+                        num_ctx_mask = int(np.round(ratio * len(ctx_shuffled)))
+                        if num_ctx_mask > 0:
+                            masked_ids[ctx_shuffled[:num_ctx_mask]] = mask_id
+
+                        micro_batch_queue.append(masked_ids)
+
+                        task_metadata_queue.append({
+                            'sample_idx': sample_idx,
+                            'step_idx': step_idx,
+                            'bin_pos': bin_pos,
+                            'target_ids': bin_data['target_token_ids']
+                        })
+
+            if not micro_batch_queue:
+                continue
+
+            # --- 执行阶段：按 MICRO_BATCH_SIZE 切片执行 ---
+            total_tasks = len(micro_batch_queue)
+            temp_results = {}  # key=(sample_idx, pos), val=[probs...]
+
+            # 进度条可选
+            # for i in range(0, total_tasks, MICRO_BATCH_SIZE):
+
+            for i in range(0, total_tasks, MICRO_BATCH_SIZE):
+                end_i = min(i + MICRO_BATCH_SIZE, total_tasks)
+
+                # 1. 堆叠 Micro-Batch
+                batch_inputs_cpu = torch.stack(micro_batch_queue[i:end_i])
+                batch_metadata = task_metadata_queue[i:end_i]
+
+                # 2. 移至 GPU (仅移动当前小批次)
+                current_sample_indices = [meta['sample_idx'] for meta in batch_metadata]
+                batch_att_mask = attention_mask[current_sample_indices]  # GPU Slice
+                batch_inputs = batch_inputs_cpu.to(device)
+
+                # 3. 前向传播 (混合精度以节省显存)
+                try:
+                    with torch.no_grad():
+                        with torch.autocast(device_type="cuda", dtype=torch.float16):
+                            outputs = model(
+                                input_ids=batch_inputs,
+                                attention_mask=batch_att_mask if not shift_logits else None
+                            )
+                            logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
+
+                            if shift_logits:
+                                logits = torch.cat([logits[:, :1, :], logits[:, :-1, :]], dim=1)
+
+                            probs = F.softmax(logits, dim=-1)  # [Micro_Batch, Seq, Vocab]
+
+                    # 4. 立即提取所需数据，释放 Logits 显存
+                    for local_idx, meta in enumerate(batch_metadata):
+                        sample_idx = meta['sample_idx']
+                        step_idx = meta['step_idx']
+                        bin_pos = meta['bin_pos']
+                        target_ids = meta['target_ids']  # CPU
+
+                        # 仅提取目标位置的概率
+                        row_probs = probs[local_idx]  # GPU Slice
+
+                        for pos, tid in zip(bin_pos, target_ids):
+                            val = row_probs[pos, tid].item()  # Move scalar to CPU
+                            key = (sample_idx, pos)
+
+                            if key not in temp_results:
+                                temp_results[key] = [0.0] * self.num_steps
+                            temp_results[key][step_idx] = val
+
+                except RuntimeError as e:
+                    if "out of memory" in str(e).lower():
+                        # 最后的防线：如果 Micro-Batch=8 还挂，尝试清除缓存并报错提示
+                        torch.cuda.empty_cache()
+                        logging.error(f"OOM with MICRO_BATCH_SIZE={MICRO_BATCH_SIZE}. Please reduce it in the code.")
+                        raise e
+                    raise e
+
+                # 清理当前 Micro-Batch 显存
+                del batch_inputs, logits, probs, outputs
+
+            # --- 聚合当前 Bin 的结果 ---
+            for (s_idx, _), traj in temp_results.items():
+                auc = self._calculate_trajectory_auc(np.array(traj))
+                all_sample_aucs[s_idx].append(auc)
+
+            # 清理 Bin 级缓存
+            del micro_batch_queue, task_metadata_queue, temp_results
+            torch.cuda.empty_cache()
+
+        # 格式化输出
+        results = []
+        for b in range(batch_size):
+            if batch_bin_metadata[b] is None or not all_sample_aucs[b]:
+                results.append(None)
+            else:
+                results.append(all_sample_aucs[b])
+
+        return results
+
+    def _compute_bin_sequential(self, input_ids, attention_mask, bin_data,
+                                model, mask_id, shift_logits, device):
+        """Fallback sequential processing for OOM cases."""
+        bin_positions = bin_data['bin_positions']
+        target_token_ids = bin_data['target_token_ids']
+        context_positions_shuffled = bin_data['context_positions_shuffled']
+
+        trajectories = [[] for _ in range(len(bin_positions))]
+
+        for context_mask_ratio in self.context_mask_ratios:
+            num_context_to_mask = int(np.round(context_mask_ratio * len(context_positions_shuffled)))
+
+            masked_ids = input_ids.clone()
+            for pos in bin_positions:
+                masked_ids[pos] = mask_id
+
+            if num_context_to_mask > 0:
+                positions_to_mask = context_positions_shuffled[:num_context_to_mask]
+                masked_ids[positions_to_mask] = mask_id
+
+            with torch.no_grad():
+                outputs = model(
+                    input_ids=masked_ids.unsqueeze(0),
+                    attention_mask=attention_mask.unsqueeze(0) if not shift_logits else None
+                )
+                logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
+
+                if shift_logits:
+                    logits = torch.cat([logits[:, :1, :], logits[:, :-1, :]], dim=1)
+
+                probs = F.softmax(logits[0], dim=-1)
+
+                for i, (pos, token_id) in enumerate(zip(bin_positions, target_token_ids)):
+                    token_prob = probs[pos, token_id].item()
+                    trajectories[i].append(token_prob)
+
+        bin_aucs = []
+        for traj in trajectories:
+            if len(traj) > 1:
+                auc = self._calculate_trajectory_auc(np.array(traj))
+                bin_aucs.append(auc)
+
+        return bin_aucs
 
     def _calculate_trajectory_auc(self, trajectory):
         """Calculate Area Under the trajectory Curve."""
