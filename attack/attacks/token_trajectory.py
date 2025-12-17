@@ -1,15 +1,4 @@
-"""
-Token-Level Trajectory AUC Attack for Diffusion Language Models (Fully Vectorized Version)
 
-Analyzes token-level probability trajectories during progressive context unmasking
-to distinguish training members from non-members.
-
-Hypothesis:
-- Members:    Stable token predictions (flat trajectory) → Low AUC
-- Non-members: Context-dependent predictions (varying trajectory) → High AUC
-
-Key Optimization:  Full vectorization - stack all samples × all steps into single forward pass
-"""
 
 import logging
 import random
@@ -26,10 +15,16 @@ from attack.misc.models import ModelManager
 
 class TokenTrajectoryAttack(AbstractAttack):
     """
-    Token-Level Trajectory AUC-based Membership Inference Attack.
+    Token-Level Trajectory AUC Attack (Corrected & Vectorized).
 
-    Computes probability trajectories for individual tokens during progressive
-    context unmasking and uses aggregated AUC scores as membership signals.
+    Logic:
+    1. Computes probability trajectories of ground-truth tokens as context is progressively unmasked.
+    2. Calculates AUC for each token's trajectory.
+    3. Aggregates scores using 'bottom_k' (focusing on the hardest tokens).
+
+    Hypothesis (Fixed):
+    - Members: Even on 'hard' tokens, the model has higher confidence due to memorization -> Higher AUC.
+    - Non-members: Hard tokens remain hard (low probability) until full context is given -> Lower AUC.
     """
 
     def __init__(self, name: str, model, tokenizer, config, device: torch.device):
@@ -131,57 +126,44 @@ class TokenTrajectoryAttack(AbstractAttack):
 
     def _compute_batch_scores(self, texts):
         """
-        Compute token-level trajectory-based scores for a batch of texts.
-
-        🔥 Key Optimization: Aggregate-then-Ratio for numerical stability and semantic clarity
+        Compute scores.
+        Higher Score = Higher Likelihood of Membership.
         """
         if self.use_reference_model:
-            # Compute token-level AUCs for both models
-            target_token_aucs_batch = self._compute_token_aucs_batch(
+            target_aucs = self._compute_token_aucs_batch(
                 texts, self.model, self.tokenizer, self.target_mask_id,
                 self.target_shift_logits, self.device
             )
-
-            ref_token_aucs_batch = self._compute_token_aucs_batch(
+            ref_aucs = self._compute_token_aucs_batch(
                 texts, self.ref_model, self.ref_tokenizer, self.ref_mask_id,
                 self.ref_shift_logits, self.ref_device
             )
 
-            # Compute calibrated scores
             scores = []
-            for target_aucs, ref_aucs in zip(target_token_aucs_batch, ref_token_aucs_batch):
-                if target_aucs is None or ref_aucs is None:
+            for t_auc, r_auc in zip(target_aucs, ref_aucs):
+                if t_auc is None or r_auc is None:
                     scores.append(0.0)
                     continue
 
-                # ✅ FIXED: Aggregate first, then compute ratio
-                target_aggregated = self._aggregate_scores(target_aucs)
-                ref_aggregated = self._aggregate_scores(ref_aucs)
+                # Aggregate using bottom_k (find the hardest tokens)
+                t_agg = self._aggregate_scores(t_auc)
+                r_agg = self._aggregate_scores(r_auc)
 
-                # Numerical stability: prevent division by near-zero
-                ref_aggregated_safe = max(abs(ref_aggregated), 1e-6)
-
-                # Calibrated score = Target signal / Reference baseline
-                relative_score = target_aggregated / ref_aggregated_safe
-
-                # Negative because lower trajectory AUC indicates membership
-                scores.append(-relative_score)
-
+                # Ratio: Target AUC / Ref AUC
+                # Member: Target AUC is high (even for hard tokens), Ref is baseline. Ratio > 1.
+                scores.append(t_agg / max(r_agg, 1e-6))  # ❌ Removed negative sign
         else:
-            # Single model version (unchanged)
-            token_aucs_batch = self._compute_token_aucs_batch(
+            target_aucs = self._compute_token_aucs_batch(
                 texts, self.model, self.tokenizer, self.target_mask_id,
                 self.target_shift_logits, self.device
             )
-
             scores = []
-            for token_aucs in token_aucs_batch:
-                if token_aucs is None:
+            for t_auc in target_aucs:
+                if t_auc is None:
                     scores.append(0.0)
                     continue
-
-                aggregated_score = self._aggregate_scores(token_aucs)
-                scores.append(-aggregated_score)
+                # Higher AUC on hard tokens -> Member
+                scores.append(self._aggregate_scores(t_auc))  # ❌ Removed negative sign
 
         return scores
 
@@ -337,6 +319,7 @@ class TokenTrajectoryAttack(AbstractAttack):
                             if shift_logits:
                                 logits = torch.cat([logits[:, :1, :], logits[:, :-1, :]], dim=1)
 
+                            logits = logits.float()
                             probs = F.softmax(logits, dim=-1)  # [Micro_Batch, Seq, Vocab]
 
                     # 4. 立即提取所需数据，释放 Logits 显存
@@ -432,15 +415,24 @@ class TokenTrajectoryAttack(AbstractAttack):
         return bin_aucs
 
     def _calculate_trajectory_auc(self, trajectory):
-        """Calculate Area Under the trajectory Curve."""
+        """
+        Calculate AUC of token probability trajectory.
+
+        Correct Understanding:
+        - X-axis: Context mask ratio (1.0 = fully masked → 0.0 = fully visible)
+        - Y-axis: Token probability
+        - Members: Probability rises earlier → Higher AUC
+        - Non-members: Probability flat until late → Lower AUC
+        """
         if len(trajectory) < 2:
             return 0.0
 
-        # Using trapezoidal rule
-        auc = np.trapz(trajectory, x=self.context_mask_ratios)
-        x_range = self.context_mask_ratios[0] - self.context_mask_ratios[-1]
+        # 🔥 KEY FIX: Use context_mask_ratios as X-axis
+        x_values = self.context_mask_ratios
 
-        # Normalize by x_range
+        auc = np.trapz(trajectory, x=x_values)
+        x_range = x_values[-1] - x_values[0]  # Will be negative
+
         normalized_auc = auc / x_range if abs(x_range) > 1e-8 else auc
 
         return float(normalized_auc)
